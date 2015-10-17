@@ -9,9 +9,13 @@ import (
     "os"
     "os/exec"
     "bufio"
+    "encoding/json"
+    "log"
 )
 
 var (
+    config Config
+
     rds *redis.Client
 
     queue *sqs.SQS
@@ -21,15 +25,38 @@ var (
     isIndexing string
 )
 
+type Config struct {
+    QueueRegion string `json:"queue_region"`
+    QueueURL string `json:"queue_url"`
+    QueueWaitTime int64 `json:"queue_wait_time"`
+
+    RedisAddr string `json:"redis_addr"`
+    RedisPass string `json:"redis_pass"`
+    RedisDB int64 `json:"redis_db"`
+}
+
+func initConfig() {
+    cfg, err := os.Open("config.json")
+    if err != nil {
+        log.Fatal(err)
+    }
+    parser := json.NewDecoder(cfg)
+    if err = parser.Decode(config); err != nil {
+        log.Fatal(err)
+    }
+}
+
+
+
 func initQueue() {
     queue = sqs.New(&aws.Config {
         Region: aws.String(""),
     })
 
-    queueURL := ""
+    queueURL := config.QueueURL 
     receive = &sqs.ReceiveMessageInput {
         QueueUrl: &queueURL,
-        WaitTimeSeconds: aws.Int64(1000),
+        WaitTimeSeconds: aws.Int64(config.QueueWaitTime),
     }
     send = &sqs.SendMessageInput {
         QueueUrl: &queueURL,
@@ -38,14 +65,15 @@ func initQueue() {
 
 func initRedis() {
     rds = redis.NewClient(&redis.Options {
-        Addr: "",
-        Password: "",
-        DB: 0,
+        Addr: config.RedisAddr,
+        Password: config.RedisPass,
+        DB: config.RedisDB,
     })
 }
 
 func main() {
     isIndexing = ""
+    initConfig()
     initQueue()
     initRedis()
 
@@ -66,7 +94,7 @@ func main() {
             isIndexing = path
             rds.Publish(path, "Starting Clone")
 
-            os.MkdirAll("_repos" + path, 0777)
+            os.MkdirAll("_repos/" + path, 0777)
             cloneURL := "https://" + token + "@github.com/" + path + ".git"
             clone := exec.Command("cd", "_repos/" + path + ";", "git", "init;", "git", "pull", cloneURL)
             clone.Run()
