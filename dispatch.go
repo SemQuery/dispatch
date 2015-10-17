@@ -1,4 +1,4 @@
- package main
+package main
 
 import (
     "github.com/aws/aws-sdk-go/aws"
@@ -29,7 +29,7 @@ func initQueue() {
     queueURL := ""
     receive = &sqs.ReceiveMessageInput {
         QueueUrl: &queueURL,
-        WaitTimeSeconds: aws.Int64(10),
+        WaitTimeSeconds: aws.Int64(1000),
     }
     send = &sqs.SendMessageInput {
         QueueUrl: &queueURL,
@@ -64,7 +64,7 @@ func main() {
 
         if err = rds.Get(path).Err(); err != nil {
             isIndexing = path
-            rds.Set(path, "Cloning: 0%", 0)
+            rds.Publish(path, "Starting Clone")
 
             os.MkdirAll("_repos" + path, 0777)
             cloneURL := "https://" + token + "@github.com/" + path + ".git"
@@ -83,8 +83,9 @@ func main() {
             go func() {
                 index.Start()
                 for scanner.Scan() {
-                    rds.Set(path, scanner.Text(), 0)
+                    rds.Publish(path, scanner.Text())
                 }
+                rds.Publish(path, "END")
             }()
             index.Wait()
             isIndexing = ""
