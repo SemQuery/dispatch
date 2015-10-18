@@ -33,6 +33,8 @@ type Config struct {
     RedisAddr string `json:"redis_addr"`
     RedisPass string `json:"redis_pass"`
     RedisDB int64 `json:"redis_db"`
+
+    EngineExecutable string `json:"engine_executable"`
 }
 
 func initConfig() {
@@ -46,14 +48,12 @@ func initConfig() {
     }
 }
 
-
-
 func initQueue() {
     queue = sqs.New(&aws.Config {
         Region: aws.String(""),
     })
 
-    queueURL := config.QueueURL 
+    queueURL := config.QueueURL
     receive = &sqs.ReceiveMessageInput {
         QueueUrl: &queueURL,
         WaitTimeSeconds: aws.Int64(config.QueueWaitTime),
@@ -92,7 +92,7 @@ func main() {
 
         if err = rds.Get(path).Err(); err != nil {
             isIndexing = path
-            rds.Publish(path, "Starting Clone")
+            rds.Publish(path, "!Cloning")
 
             os.MkdirAll("_repos/" + path, 0777)
             cloneURL := "https://" + token + "@github.com/" + path + ".git"
@@ -102,7 +102,7 @@ func main() {
 
             //Update redis db with clone progress here
 
-            executable := ""
+            executable := config.EngineExecutable
             index := exec.Command("java", "-jar", executable, "_repos/" + path, path)
 
             stdout, _ := index.StdoutPipe()
