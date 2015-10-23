@@ -8,6 +8,7 @@ import (
 
     "os"
     "os/exec"
+    "strings"
     "bufio"
     "encoding/json"
     "log"
@@ -35,6 +36,20 @@ type Config struct {
     RedisDB int64 `json:"redis_db"`
 
     EngineExecutable string `json:"engine_executable"`
+}
+
+type Packet struct {
+    Action string
+    Payload map[string]string
+}
+
+func (p Packet) Send() bool {
+    raw, err := json.Marshal(p)
+    if err != nil {
+        return false
+    }
+    rds.Publish(isIndexing, string(raw))
+    return true
 }
 
 func initConfig() {
@@ -92,8 +107,11 @@ func main() {
 
         if err = rds.Get(path).Err(); err != nil {
             isIndexing = path
-            rds.Publish(path, "!Cloning")
 
+            Packet {
+                Action: "Cloning",
+                Payload: map[string]string {},
+            }.Send()
             os.MkdirAll("_repos/" + path, 0777)
             cloneURL := "https://" + token + "@github.com/" + path + ".git"
             clone := exec.Command("cd", "_repos/" + path + ";", "git", "init;", "git", "pull", cloneURL)
@@ -111,11 +129,22 @@ func main() {
             go func() {
                 index.Start()
                 for scanner.Scan() {
-                    rds.Publish(path, scanner.Text())
+                    output := strings.Split(scanner.Text(), ",")
+                    Packet {
+                        Action: "Indexing",
+                        Payload: map[string]string {
+                            "percent": output[0],
+                            "files": output[1],
+                            "lines": output[2],
+                        },
+                    }.Send()
                 }
-                rds.Publish(path, "END")
             }()
             index.Wait()
+            Packet {
+                Action: "Finished",
+                Payload: map[string]string {},
+            }.Send()
             isIndexing = ""
         }
     }
