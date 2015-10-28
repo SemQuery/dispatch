@@ -209,6 +209,7 @@ func index() {
             continue
         }
 
+        receipt := *out.Messages[0].ReceiptHandle
         path := *out.Messages[0].MessageAttributes["path"].StringValue
         token := *out.Messages[0].MessageAttributes["token"].StringValue
 
@@ -245,9 +246,18 @@ func index() {
             }()
             index.Wait()
 
+            rm := exec.Command("rm", "-rf", "_repos/" + path)
+            rm.Run()
+            rm.Wait()
+
             scp := exec.Command("scp", "", config.StoragePath + "/" + path)
             scp.Run()
             scp.Wait()
+
+            queue.DeleteMessage(&sqs.DeleteMessageInput {
+                QueueUrl: &config.QueueURL,
+                ReceiptHandle: &receipt,
+            })
 
             Packet {
                 Action: "Finished",
