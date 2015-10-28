@@ -7,7 +7,6 @@ import (
     "github.com/aws/aws-sdk-go/service/sqs"
 
     "gopkg.in/redis.v3"
-    "gopkg.in/mgo.v2"
 
     "os"
     "os/exec"
@@ -24,7 +23,6 @@ var (
     config Config
 
     rds *redis.Client
-    mongod *mgo.Database
 
     queue *sqs.SQS
     receive *sqs.ReceiveMessageInput
@@ -37,11 +35,6 @@ type Config struct {
     QueueRegion string `json:"queue_region"`
     QueueURL string `json:"queue_url"`
     QueueWaitTime int64 `json:"queue_wait_time"`
-
-    DBAddr string `json:"db_addr"`
-    DBName string `json:"db_name"`
-    DBUser string `json:"db_user"`
-    DBPass string `json:"db_pass"`
 
     RedisAddr string `json:"redis_addr"`
     RedisPass string `json:"redis_pass"`
@@ -98,20 +91,6 @@ func initRedis() {
         Password: config.RedisPass,
         DB: config.RedisDB,
     })
-}
-
-func initMongoDB() {
-    session, err := mgo.DialWithInfo(&mgo.DialInfo{
-        Addrs: []string{config.DBAddr},
-        Database: config.DBName,
-        Username: config.DBUser,
-        Password: config.DBPass,
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    mongod = session.DB(config.DBName)
 }
 
 func main() {
@@ -219,7 +198,6 @@ func extractLines(src string, start int, end int) (map[int]string, int, int) {
 func index() {
     isIndexing = ""
     initQueue()
-    initMongoDB()
 
     for {
         if isIndexing != "" {
