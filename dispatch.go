@@ -151,6 +151,7 @@ func query() {
                 ccount++
             }
         }
+        p.Payload["found"] = results
         return p.Json()
     })
     m.Run()
