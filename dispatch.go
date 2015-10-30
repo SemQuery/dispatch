@@ -122,7 +122,7 @@ func query() {
         scanner := bufio.NewScanner(read)
 
         p := Packet {
-            Action: "Results",
+            Action: "results",
             Payload: map[string]interface{} {},
         }
 
@@ -235,7 +235,7 @@ func index() {
                 for scanner.Scan() {
                     output := strings.Split(scanner.Text(), ",")
                     Packet {
-                        Action: "Indexing",
+                        Action: "indexing",
                         Payload: map[string]interface{} {
                             "percent": output[0],
                             "files": output[1],
@@ -260,7 +260,7 @@ func index() {
             })
 
             Packet {
-                Action: "Finished",
+                Action: "finished",
                 Payload: map[string]interface{} {},
             }.Send()
             isIndexing = ""
