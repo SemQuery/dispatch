@@ -16,6 +16,7 @@ import (
     "bufio"
     "encoding/json"
     "io/ioutil"
+    "log"
 )
 
 var (
@@ -68,7 +69,7 @@ type IndexingJob struct {
 func initConfig() {
     cfg, _ := os.Open("config.json")
     parser := json.NewDecoder(cfg)
-    parser.Decode(config)
+    parser.Decode(&config)
 }
 
 func initQueue() {
@@ -79,7 +80,10 @@ func initQueue() {
     req := sqs.GetQueueUrlInput {
         QueueName: &config.QueueName,
     }
-    res, _ := queue.GetQueueUrl(&req)
+    res, err := queue.GetQueueUrl(&req)
+    if err != nil {
+        log.Fatal(err)
+    }
     queueUrl = *res.QueueUrl
 
     receive = &sqs.ReceiveMessageInput {
@@ -262,10 +266,6 @@ func index() {
                 }
             }()
             index.Wait()
-
-            rm := exec.Command("rm", "-rf", "_repos/" + path)
-            rm.Run()
-            rm.Wait()
 
             scp := exec.Command("scp", "", config.StoragePath + "/" + path)
             scp.Run()
