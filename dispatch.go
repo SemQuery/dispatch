@@ -4,6 +4,7 @@ import (
     "github.com/go-martini/martini"
 
     "github.com/aws/aws-sdk-go/aws"
+    "github.com/aws/aws-sdk-go/aws/session"
     "github.com/aws/aws-sdk-go/service/sqs"
 
     "gopkg.in/redis.v3"
@@ -13,6 +14,7 @@ import (
     "strings"
     "strconv"
     "net/http"
+    "net/url"
     "bufio"
     "encoding/json"
     "io/ioutil"
@@ -61,9 +63,12 @@ func (p Packet) Send() {
 }
 
 type IndexingJob struct {
-    Token string
+    Type string
 
+    Token string
     RepositoryPath string
+
+    Link string
 }
 
 func initConfig() {
@@ -73,7 +78,7 @@ func initConfig() {
 }
 
 func initQueue() {
-    queue = sqs.New(&aws.Config {
+    queue = sqs.New(session.New(), &aws.Config {
         Region: &config.QueueRegion,
     })
 
@@ -234,53 +239,60 @@ func index() {
         receipt := *msg.ReceiptHandle
         var job IndexingJob
         json.Unmarshal([]byte(*msg.Body), &job)
-        token, path := job.Token, job.RepositoryPath
 
-        if err = rds.Get(path).Err(); err != nil {
-            isIndexing = path
+        token, repo, link := job.Token, job.RepositoryPath, job.Link
+        var cloneURL, path string
 
-            os.MkdirAll("_repos/" + path, 0777)
-            cloneURL := "https://" + token + "@github.com/" + path + ".git"
-            clone := exec.Command("sh", "clone.sh", path, cloneURL)
-            clone.Run()
-            clone.Wait()
-
-            executable := config.EngineExecutable
-            index := exec.Command("java", "-jar", executable, "index", "_repos/" + path, path)
-
-            stdout, _ := index.StdoutPipe()
-            scanner := bufio.NewScanner(stdout)
-
-            func() {
-                index.Start()
-                for scanner.Scan() {
-                    output := strings.Split(scanner.Text(), ",")
-                    Packet {
-                        Action: "indexing",
-                        Payload: map[string]interface{} {
-                            "percent": output[0],
-                            "files": output[1],
-                            "lines": output[2],
-                        },
-                    }.Send()
-                }
-            }()
-            index.Wait()
-
-            scp := exec.Command("scp", "", config.StoragePath + "/" + path)
-            scp.Run()
-            scp.Wait()
-
-            queue.DeleteMessage(&sqs.DeleteMessageInput {
-                QueueUrl: &queueUrl,
-                ReceiptHandle: &receipt,
-            })
-
-            Packet {
-                Action: "finished",
-                Payload: map[string]interface{} {},
-            }.Send()
+        if job.Type == "github" {
+            cloneURL   = "https://" + token + "@github.com/" + repo + ".git"
+            isIndexing = repo
+            path        = repo
+        } else if job.Type == "link" {
+            cloneURL   = link
+            isIndexing = link
+            path       = url.QueryEscape(link)
         }
+
+        os.MkdirAll("_repos/" + path, 0777)
+        clone := exec.Command("sh", "clone.sh", path, cloneURL)
+        clone.Run()
+        clone.Wait()
+
+        executable := config.EngineExecutable
+        index := exec.Command("java", "-jar", executable, "index", "_repos/" + path, path)
+
+        stdout, _ := index.StdoutPipe()
+        scanner := bufio.NewScanner(stdout)
+
+        func() {
+            index.Start()
+            for scanner.Scan() {
+                output := strings.Split(scanner.Text(), ",")
+                Packet {
+                    Action: "indexing",
+                    Payload: map[string]interface{} {
+                        "percent": output[0],
+                        "files": output[1],
+                        "lines": output[2],
+                    },
+                }.Send()
+            }
+        }()
+        index.Wait()
+
+        scp := exec.Command("scp", "", config.StoragePath + "/" + path)
+        scp.Run()
+        scp.Wait()
+
+        queue.DeleteMessage(&sqs.DeleteMessageInput {
+            QueueUrl: &queueUrl,
+            ReceiptHandle: &receipt,
+        })
+
+        Packet {
+            Action: "finished",
+            Payload: map[string]interface{} {},
+        }.Send()
         isIndexing = ""
     }
 }
