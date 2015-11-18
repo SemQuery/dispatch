@@ -120,15 +120,15 @@ func query() {
     m := martini.Classic()
     m.Post("/", func(w http.ResponseWriter, r *http.Request) string {
         r.ParseForm()
-        query, repo, token := r.FormValue("query"), r.FormValue("repo"), r.FormValue("token")
+        query, source, token := r.FormValue("query"), r.FormValue("source"), r.FormValue("token")
 
-        sToken, err := rds.Get(query + "|" + repo).Result()
+        sToken, err := rds.Get(query + "|" + source).Result()
         if token == "" || err != nil || sToken != token {
             return "You are not authorized to be here."
         }
 
         executable := config.EngineExecutable
-        quer := exec.Command("java", "-jar", executable, "query", query, repo)
+        quer := exec.Command("java", "-jar", executable, "-m", "query", "-q", query, "-i", url.QueryEscape(source) + ".db")
 
         read, _ := quer.StdoutPipe()
         scanner := bufio.NewScanner(read)
@@ -246,7 +246,7 @@ func index() {
         if job.Type == "github" {
             cloneURL   = "https://" + token + "@github.com/" + repo + ".git"
             isIndexing = repo
-            path        = repo
+            path       = url.QueryEscape(repo)
         } else if job.Type == "link" {
             cloneURL   = link
             isIndexing = link
@@ -259,7 +259,7 @@ func index() {
         clone.Wait()
 
         executable := config.EngineExecutable
-        index := exec.Command("java", "-jar", executable, "index", "_repos/" + path, path)
+        index := exec.Command("java", "-jar", executable, "-m", "index", "-i", "_repos/" + path, "-o", path + ".db")
 
         stdout, _ := index.StdoutPipe()
         scanner := bufio.NewScanner(stdout)
@@ -280,7 +280,7 @@ func index() {
         }()
         index.Wait()
 
-        scp := exec.Command("scp", "", config.StoragePath + "/" + path)
+        scp := exec.Command("scp", path + ".db", config.StoragePath)
         scp.Run()
         scp.Wait()
 
