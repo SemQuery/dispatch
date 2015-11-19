@@ -37,7 +37,7 @@ type Config struct {
     QueueName string `json:"sqs_name"`
     QueueRegion string `json:"sqs_region"`
     QueueWaitTime int64 `json:"sqs_wait_time"`
-    QueueVisibilityTimeout int64 `json:"sqs_visiblity_timeout"`
+    QueueVisibilityTimeout int64 `json:"sqs_visibility_timeout"`
 
     RedisAddr string `json:"redis_addr"`
     RedisPass string `json:"redis_pass"`
@@ -46,6 +46,7 @@ type Config struct {
     StoragePath string `json:"storage"`
 
     EngineExecutable string `json:"engine_executable"`
+    EngineArgs []string `json:"engine_args"`
 }
 
 type Packet struct {
@@ -109,6 +110,11 @@ func initRedis() {
 func main() {
     initConfig()
     initRedis()
+
+    if len(os.Args) < 2 {
+        log.Fatal("Expected at least 1 arg")
+    }
+
     if os.Args[1] == "index" {
         index()
     } else if os.Args[1] == "query" {
@@ -128,7 +134,13 @@ func query() {
         }
 
         executable := config.EngineExecutable
-        quer := exec.Command("java", "-jar", executable, "-m", "query", "-q", query, "-i", url.QueryEscape(source) + ".db")
+        args       := append([]string{"-jar"}, config.EngineArgs...)
+        args       = append(args, []string{
+            executable, "-m", "query", "-i", url.QueryEscape(source) + ".db",
+        }...)
+
+        log.Print("Executing java with ", args)
+        quer := exec.Command("java", args...)
 
         read, _ := quer.StdoutPipe()
         scanner := bufio.NewScanner(read)
@@ -259,7 +271,13 @@ func index() {
         clone.Wait()
 
         executable := config.EngineExecutable
-        index := exec.Command("java", "-jar", executable, "-m", "index", "-i", "_repos/" + path, "-o", path + ".db")
+        args       := append([]string{"-jar"}, config.EngineArgs...)
+        args       = append(args, []string{
+            executable, "-m", "index", "-i", "_repos/" + path, "-o", path + ".db",
+        }...)
+
+        log.Print("Executing java with", args)
+        index := exec.Command("java", args...)
 
         stdout, _ := index.StdoutPipe()
         scanner := bufio.NewScanner(stdout)
