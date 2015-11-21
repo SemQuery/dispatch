@@ -265,10 +265,24 @@ func index() {
             path       = url.QueryEscape(link)
         }
 
+        Packet {
+            Action: "cloning",
+            Payload: map[string]interface{} {
+                "status": "started",
+            },
+        }.Send()
+
         os.MkdirAll("_repos/" + path, 0777)
         clone := exec.Command("sh", "clone.sh", path, cloneURL)
         clone.Run()
         clone.Wait()
+
+        Packet {
+            Action: "cloning",
+            Payload: map[string]interface{} {
+                "status": "finished",
+            },
+        }.Send()
 
         executable := config.EngineExecutable
         args       := append([]string{"-jar"}, config.EngineArgs...)
