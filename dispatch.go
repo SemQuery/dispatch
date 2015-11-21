@@ -239,6 +239,8 @@ func index() {
 
         out, err := queue.ReceiveMessage(receive);
         if err != nil {
+            initQueue()
+            isIndexing = ""
             continue
         }
 
