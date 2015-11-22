@@ -178,6 +178,7 @@ func query() {
 func index() {
     isIndexing = ""
     initQueue()
+    initS3()
 
     for {
         if isIndexing != "" {
