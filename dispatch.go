@@ -53,7 +53,7 @@ type Config struct {
 
     S3BucketName string `json:"s3_bucket_name"`
     StoragePath string `json:"storage"`
-    StorageMaxLinesPerFile int64 `json:"storage_max_lines_per_file"`
+    StorageMaxLinesPerFile int `json:"storage_max_lines_per_file"`
 
     EngineExecutable string `json:"engine_executable"`
     EngineArgs []string `json:"engine_args"`
@@ -317,10 +317,7 @@ func upload(path string, info os.FileInfo, err error) error {
             lines = append(lines, scanner.Text())
         }
 
-        limit := 20
-        if len(lines) <= limit {
-            return nil
-        }
+        limit := config.StorageMaxLinesPerFile
 
         for i := 0; i != len(lines) / limit + 1; i++ {
             min, max := (i * limit) + 1, (i + 1) * limit
@@ -337,7 +334,7 @@ func upload(path string, info os.FileInfo, err error) error {
             newf.Sync()
 
             uploader.Upload(&s3manager.UploadInput {
-                Body: file,
+                Body: newf,
                 Bucket: &config.S3BucketName,
                 Key: &newn,
             })
