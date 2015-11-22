@@ -11,13 +11,16 @@ import (
 
     "os"
     "os/exec"
+    "bufio"
+    "path/filepath"
+
     "strings"
     "strconv"
+
     "net/http"
     "net/url"
-    "bufio"
+
     "encoding/json"
-    "io/ioutil"
     "log"
 )
 
@@ -43,7 +46,11 @@ type Config struct {
     RedisPass string `json:"redis_pass"`
     RedisDB int64 `json:"redis_db"`
 
+    AcceptedFileExtensions []string `json:"accepted_file_extensions"`
+
+    S3BucketName string `json:"s3_bucket_name"`
     StoragePath string `json:"storage"`
+    StorageMaxLinesPerFile int64 `json:"storage_max_lines_per_file"`
 
     EngineExecutable string `json:"engine_executable"`
     EngineArgs []string `json:"engine_args"`
@@ -115,10 +122,14 @@ func main() {
         log.Fatal("Expected at least 1 arg")
     }
 
-    if os.Args[1] == "index" {
+    mode := os.Args[1]
+    switch mode {
+    case "index":
         index()
-    } else if os.Args[1] == "query" {
+        break
+    case "query":
         query()
+        break
     }
 }
 
@@ -298,25 +309,25 @@ func index() {
         stdout, _ := index.StdoutPipe()
         scanner := bufio.NewScanner(stdout)
 
-        func() {
-            index.Start()
-            for scanner.Scan() {
-                output := strings.Split(scanner.Text(), ",")
-                Packet {
-                    Action: "indexing",
-                    Payload: map[string]interface{} {
-                        "percent": output[0],
-                        "files": output[1],
-                        "lines": output[2],
-                    },
-                }.Send()
-            }
-        }()
+        index.Start()
+        for scanner.Scan() {
+            output := strings.Split(scanner.Text(), ",")
+            Packet {
+                Action: "indexing",
+                Payload: map[string]interface{} {
+                    "percent": output[0],
+                    "files": output[1],
+                    "lines": output[2],
+                },
+            }.Send()
+        }
         index.Wait()
 
         scp := exec.Command("scp", path + ".db", config.StoragePath)
         scp.Run()
         scp.Wait()
+
+        uploadToS3(path)
 
         queue.DeleteMessage(&sqs.DeleteMessageInput {
             QueueUrl: &queueUrl,
@@ -329,4 +340,62 @@ func index() {
         }.Send()
         isIndexing = ""
     }
+}
+
+func uploadToS3(path string) {
+    os.MkdirAll("_processedrepos/" + path, 0777)
+
+    filepath.Walk("_repos/" + path, split)
+}
+
+func split(path string, info os.FileInfo, err error) error {
+    relative := strings.Join(strings.Split(path, "/")[1:], "/")
+    if info.IsDir() {
+        os.MkdirAll("_processedrepos/" + relative, 0777)
+    } else {
+        sep := strings.Split(relative, ".")
+        if !contains(config.AcceptedFileExtensions, sep[1]) {
+            return nil
+        }
+
+        lines := []string { "" }
+
+        file, _ := os.Open(path)
+        defer file.Close()
+
+        scanner := bufio.NewScanner(file)
+        for scanner.Scan() {
+            lines = append(lines, scanner.Text())
+        }
+
+        limit := 20
+        if len(lines) <= limit {
+            return nil
+        }
+
+        for i := 0; i != len(lines) / limit + 1; i++ {
+            min, max := (i * limit) + 1, (i + 1) * limit
+
+            newf, _ := os.Create("_processedrepos/" + sep[0] + "-L" + strconv.Itoa(min) + "-L" + strconv.Itoa(max) + "." + sep[1])
+            defer newf.Close()
+            for ; min != max + 1; min++ {
+                if len(lines) <= min {
+                    break
+                }
+                newf.Write([]byte(lines[min] + "\n"))
+            }
+            newf.Sync()
+        }
+
+    }
+    return nil
+}
+
+func contains(slice []string, el string) bool {
+    for _, a := range slice {
+        if a == el {
+            return true
+        }
+    }
+    return false
 }
