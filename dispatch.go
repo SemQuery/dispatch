@@ -6,6 +6,7 @@ import (
     "github.com/aws/aws-sdk-go/aws"
     "github.com/aws/aws-sdk-go/aws/session"
     "github.com/aws/aws-sdk-go/service/sqs"
+    "github.com/aws/aws-sdk-go/service/s3/s3manager"
 
     "gopkg.in/redis.v3"
 
@@ -32,6 +33,8 @@ var (
     queue *sqs.SQS
     queueUrl string
     receive *sqs.ReceiveMessageInput
+
+    uploader *s3manager.Uploader
 
     isIndexing string
 )
@@ -106,6 +109,10 @@ func initQueue() {
     }
 }
 
+func initS3() {
+    uploader = s3manager.NewUploader(session.New(&aws.Config {Region: &config.QueueRegion}))
+}
+
 func initRedis() {
     rds = redis.NewClient(&redis.Options {
         Addr: config.RedisAddr,
@@ -150,91 +157,22 @@ func query() {
             executable, "-m", "query", "-i", url.QueryEscape(source) + ".db",
         }...)
 
-        log.Print("Executing java with ", args)
         quer := exec.Command("java", args...)
 
         read, _ := quer.StdoutPipe()
         scanner := bufio.NewScanner(read)
+
+        for scanner.Scan() {
+        }
 
         p := Packet {
             Action: "results",
             Payload: map[string]interface{} {},
         }
 
-        ccount := 0
-        var results []map[string]interface{}
-        quer.Start()
-        for scanner.Scan() {
-            parts := strings.Split(scanner.Text(), ",")
-            if len(parts) == 1 {
-                p.Payload["files"] = parts[0]
-                count, _ := strconv.Atoi(parts[0])
-                results = make([]map[string]interface{}, count)
-            } else {
-                file := parts[0]
-                src, _ := ioutil.ReadFile(file)
-                start, _ := strconv.Atoi(parts[1])
-                end, _ := strconv.Atoi(parts[2])
-
-                lines, relStart, relEnd := extractLines(string(src), start, end)
-                j := map[string]interface{}{}
-                for k, v := range lines {
-                    j[strconv.Itoa(k)] = v
-                }
-                results[ccount] = map[string]interface{} {
-                    "lines": j,
-                    "file": file,
-                    "relative_start": relStart,
-                    "relative_end": relEnd,
-                }
-
-                ccount++
-            }
-        }
-        quer.Wait()
-        p.Payload["found"] = results
         return p.Json()
     })
     m.RunOnAddr("localhost:3001")
-}
-
-func extractLines(src string, start int, end int) (map[int]string, int, int) {
-    lines := map[int]string{}
-
-    currentLine, lineStartPos, relativeStartPos, relativeEndPos := 1, 0, 0, 0
-
-    for i := 0; i < start; i++ {
-        if src[i] == '\n' {
-            currentLine++
-            lineStartPos = i + 1
-        }
-        if i == start - 1 {
-            relativeStartPos = i - lineStartPos + 1
-        }
-    }
-
-    for i := start; i < len(src); i++ {
-        if i == end {
-            relativeEndPos = i - lineStartPos
-        }
-        if src[i] == '\n' || i == len(src) - 1 {
-            sub := src[lineStartPos : i]
-            lines[currentLine] = sub
-
-            if len(lines) == 15 {
-                return lines, relativeStartPos, relativeEndPos
-            }
-
-            currentLine++
-            lineStartPos = i + 1
-
-            if i >= end {
-                break
-            }
-        }
-    }
-
-    return lines, relativeStartPos, relativeEndPos
 }
 
 func index() {
@@ -303,7 +241,6 @@ func index() {
             executable, "-m", "index", "-i", "_repos/" + path, "-o", path + ".db",
         }...)
 
-        log.Print("Executing java with", args)
         index := exec.Command("java", args...)
 
         stdout, _ := index.StdoutPipe()
@@ -323,16 +260,33 @@ func index() {
         }
         index.Wait()
 
+        Packet {
+            Action: "sync",
+            Payload: map[string]interface{} {
+                "status": "started",
+            },
+        }.Send()
+
         scp := exec.Command("scp", path + ".db", config.StoragePath)
         scp.Run()
-        scp.Wait()
 
-        uploadToS3(path)
+        os.MkdirAll("_processedrepos/" + path, 0777)
+        filepath.Walk("_repos/" + path, upload)
+
+        Packet {
+            Action: "sync",
+            Payload: map[string]interface{} {
+                "status": "finished",
+            },
+        }.Send()
 
         queue.DeleteMessage(&sqs.DeleteMessageInput {
             QueueUrl: &queueUrl,
             ReceiptHandle: &receipt,
         })
+
+        rm := exec.Command("rm", path + ".db", "_processedrepos/" + path, "_repos/" + path)
+        rm.Run()
 
         Packet {
             Action: "finished",
@@ -342,13 +296,7 @@ func index() {
     }
 }
 
-func uploadToS3(path string) {
-    os.MkdirAll("_processedrepos/" + path, 0777)
-
-    filepath.Walk("_repos/" + path, split)
-}
-
-func split(path string, info os.FileInfo, err error) error {
+func upload(path string, info os.FileInfo, err error) error {
     relative := strings.Join(strings.Split(path, "/")[1:], "/")
     if info.IsDir() {
         os.MkdirAll("_processedrepos/" + relative, 0777)
@@ -376,7 +324,8 @@ func split(path string, info os.FileInfo, err error) error {
         for i := 0; i != len(lines) / limit + 1; i++ {
             min, max := (i * limit) + 1, (i + 1) * limit
 
-            newf, _ := os.Create("_processedrepos/" + sep[0] + "-L" + strconv.Itoa(min) + "-L" + strconv.Itoa(max) + "." + sep[1])
+            newn := "_processedrepos/" + sep[0] + "-L" + strconv.Itoa(min) + "-L" + strconv.Itoa(max) + "." + sep[1]
+            newf, _ := os.Create(newn)
             defer newf.Close()
             for ; min != max + 1; min++ {
                 if len(lines) <= min {
@@ -385,6 +334,13 @@ func split(path string, info os.FileInfo, err error) error {
                 newf.Write([]byte(lines[min] + "\n"))
             }
             newf.Sync()
+
+            uploader.Upload(&s3manager.UploadInput {
+                Body: file,
+                Bucket: &config.S3BucketName,
+                Key: &newn,
+            })
+
         }
 
     }
