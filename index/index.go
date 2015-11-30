@@ -52,7 +52,7 @@ func InitAWS() {
 }
 
 func send(id string, p common.Packet) {
-    common.Redis.Publish(id, p.Json())
+    common.Redis.Publish("indexing:" + id, p.Json())
 }
 
 func Start() {
