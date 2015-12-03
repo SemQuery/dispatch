@@ -108,8 +108,10 @@ func Start() {
         executable := common.Config.EngineExecutable
         args       := append([]string{"-jar"}, common.Config.EngineArgs...)
         args       = append(args, []string{
-            executable, "-m", "index", "-i", "_repos/" + path, "-o", path + ".db",
+            executable, "-m", "index", "-i", "_repos/" + path, "-o", job.ID + ".db",
         }...)
+
+        log.Print("Executing java with args: ", args)
 
         index := exec.Command("java", args...)
 
@@ -128,7 +130,10 @@ func Start() {
                 },
             })
         }
-        index.Wait()
+        err = index.Wait()
+        if err != nil {
+            log.Fatal("Bad indexing command ", err)
+        }
 
         send(job.ID, common.Packet {
             Action: common.SyncingAction,
@@ -137,8 +142,11 @@ func Start() {
             },
         })
 
-        scp := exec.Command("scp", path + ".db", common.Config.StoragePath)
-        scp.Run()
+        scp := exec.Command("scp", job.ID + ".db", common.Config.StoragePath)
+        err = scp.Run()
+        if err != nil {
+            log.Fatal("scp error: ", err)
+        }
 
         os.MkdirAll("_processedrepos/" + path, 0777)
         filepath.Walk("_repos/" + path, upload)
@@ -150,8 +158,11 @@ func Start() {
             },
         })
 
-        rm := exec.Command("rm", path + ".db", "_processedrepos/" + path, "_repos/" + path)
-        rm.Run()
+        rm := exec.Command("rm", "-rf", "_processedrepos/" + path, "_repos/" + path)
+        err = rm.Run()
+        if err != nil {
+            log.Fatal("rm error: ", err)
+        }
 
         send(job.ID, common.Packet {
             Action: common.FinishedAction,
@@ -165,8 +176,8 @@ func upload(path string, info os.FileInfo, err error) error {
     if info.IsDir() {
         os.MkdirAll("_processedrepos/" + relative, 0777)
     } else {
-        sep := strings.Split(relative, ".")
-        if !contains(common.Config.AcceptedFileExtensions, sep[1]) {
+        ext := strings.TrimPrefix(filepath.Ext(path), ".")
+        if !contains(common.Config.AcceptedFileExtensions, ext) {
             return nil
         }
 
@@ -185,7 +196,7 @@ func upload(path string, info os.FileInfo, err error) error {
         for i := 0; i != len(lines) / limit + 1; i++ {
             min, max := (i * limit) + 1, (i + 1) * limit
 
-            newn := "_processedrepos/" + sep[0] + "-L" + strconv.Itoa(min) + "-L" + strconv.Itoa(max) + "." + sep[1]
+            newn := "_processedrepos/" + relative + "-L" + strconv.Itoa(min) + "-L" + strconv.Itoa(max)
             newf, _ := os.Create(newn)
             defer newf.Close()
             for ; min != max + 1; min++ {
