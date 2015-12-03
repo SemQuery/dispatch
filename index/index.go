@@ -83,7 +83,10 @@ func Start() {
             ReceiptHandle: msg.ReceiptHandle,
         })
 
-        cloneURL := job.URL[:8] + job.Token + "@" + job.URL[8:]
+        URL, _ := url.Parse(job.URL)
+        URL.User = url.User(job.Token)
+        cloneURL := URL.String()
+
         path := url.QueryEscape(job.URL)
 
         send(job.ID, common.Packet {
@@ -212,7 +215,6 @@ func upload(path string, info os.FileInfo, err error) error {
                 Bucket: &common.Config.S3BucketName,
                 Key: &newn,
             })
-
         }
     }
     return nil
