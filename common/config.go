@@ -21,7 +21,7 @@ type DispatchConfig struct {
 
     S3BucketName string `json:"s3_bucket_name"`
     StoragePath string `json:"storage"`
-    StorageMaxLinesPerFile int `json:"storage_max_lines_per_file"`
+    StorageMaxBytesPerFile int64 `json:"storage_max_bytes_per_file"`
 
     EngineExecutable string `json:"engine_executable"`
     EngineArgs []string `json:"engine_args"`
