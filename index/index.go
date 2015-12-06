@@ -17,7 +17,7 @@ import (
     "os/exec"
     "path/filepath"
     "encoding/json"
-//  "compress/gzip"
+    "compress/gzip"
 )
 
 var (
@@ -187,17 +187,26 @@ func upload(path string, info os.FileInfo, err error) error {
         limit := common.Config.StorageMaxBytesPerFile
 
         file, _ := os.Open(path)
-        length, _ := file.Seek(0, 2)
+        defer file.Close()
+        l, _ := file.Seek(0, 2)
+        length := int(l)
         file.Seek(0, 0)
 
-        var curr int64 = 0
+        curr := 0
         for curr <= length {
-            lr := io.LimitReader(file, limit)
+            reader, writer := io.Pipe()
+            go func() {
+                gw := gzip.NewWriter(writer)
+                io.CopyN(gw, file, int64(limit))
 
-            name := strings.Join([]string {relative, "-B", strconv.Itoa(int(curr)), "-B", strconv.Itoa(int(curr + limit))}, " ")
+                gw.Close()
+                writer.Close()
+            }()
+
+            name := strings.Join([]string {relative, "-B", strconv.Itoa(curr), "-B", strconv.Itoa(curr + limit)}, " ")
 
             uploader.Upload(&s3manager.UploadInput {
-                Body: lr,
+                Body: reader,
                 Key: &name,
                 Bucket: &common.Config.S3BucketName,
             })
