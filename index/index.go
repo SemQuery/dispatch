@@ -154,7 +154,6 @@ func Start() {
             log.Fatal("scp error: ", err)
         }
 
-        os.MkdirAll("_processedrepos/" + path, 0777)
         filepath.Walk("_repos/" + path, upload)
 
         send(job.ID, common.Packet {
@@ -164,7 +163,7 @@ func Start() {
             },
         })
 
-        rm := exec.Command("rm", "-rf", "_processedrepos/" + path, "_repos/" + path)
+        rm := exec.Command("rm", "-rf", "_repos/" + path)
         err = rm.Run()
         if err != nil {
             log.Fatal("rm error: ", err)
@@ -209,8 +208,6 @@ func upload(path string, info os.FileInfo, err error) error {
     }
     return nil
 }
-
-
 
 func contains(slice []string, el string) bool {
     for _, a := range slice {
