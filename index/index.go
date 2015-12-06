@@ -7,6 +7,7 @@ import (
     "github.com/aws/aws-sdk-go/service/sqs"
     "github.com/aws/aws-sdk-go/service/s3/s3manager"
 
+    "io"
     "os"
     "log"
     "bufio"
@@ -16,6 +17,7 @@ import (
     "os/exec"
     "path/filepath"
     "encoding/json"
+//  "compress/gzip"
 )
 
 var (
@@ -23,6 +25,7 @@ var (
     queueUrl string
 
     uploader *s3manager.Uploader
+    encoding string = "gzip"
 )
 
 type IndexingJob struct {
@@ -176,49 +179,38 @@ func Start() {
 
 func upload(path string, info os.FileInfo, err error) error {
     relative := strings.Join(strings.Split(path, "/")[1:], "/")
-    if info.IsDir() {
-        os.MkdirAll("_processedrepos/" + relative, 0777)
-    } else {
+    if !info.IsDir() {
         ext := strings.TrimPrefix(filepath.Ext(path), ".")
         if !contains(common.Config.AcceptedFileExtensions, ext) {
             return nil
         }
 
-        lines := []string { "" }
+        limit := common.Config.StorageMaxBytesPerFile
 
         file, _ := os.Open(path)
-        defer file.Close()
+        length, _ := file.Seek(0, 2)
+        file.Seek(0, 0)
 
-        scanner := bufio.NewScanner(file)
-        for scanner.Scan() {
-            lines = append(lines, scanner.Text())
-        }
+        var curr int64 = 0
+        for curr <= length {
+            lr := io.LimitReader(file, limit)
 
-        limit := common.Config.StorageMaxLinesPerFile
-
-        for i := 0; i != len(lines) / limit + 1; i++ {
-            min, max := (i * limit) + 1, (i + 1) * limit
-
-            newn := "_processedrepos/" + relative + "-L" + strconv.Itoa(min) + "-L" + strconv.Itoa(max)
-            newf, _ := os.Create(newn)
-            defer newf.Close()
-            for ; min != max + 1; min++ {
-                if len(lines) <= min {
-                    break
-                }
-                newf.Write([]byte(lines[min] + "\n"))
-            }
-            newf.Sync()
+            name := strings.Join([]string {relative, "-B", strconv.Itoa(int(curr)), "-B", strconv.Itoa(int(curr + limit))}, " ")
 
             uploader.Upload(&s3manager.UploadInput {
-                Body: newf,
+                Body: lr,
+                Key: &name,
                 Bucket: &common.Config.S3BucketName,
-                Key: &newn,
             })
+
+            curr += limit
         }
+
     }
     return nil
 }
+
+
 
 func contains(slice []string, el string) bool {
     for _, a := range slice {
