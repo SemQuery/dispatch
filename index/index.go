@@ -154,7 +154,6 @@ func Start() {
             log.Fatal("scp error: ", err)
         }
 
-        os.MkdirAll("_processedrepos/" + path, 0777)
         filepath.Walk("_repos/" + path, upload)
 
         send(job.ID, common.Packet {
@@ -164,7 +163,7 @@ func Start() {
             },
         })
 
-        rm := exec.Command("rm", "-rf", "_processedrepos/" + path, "_repos/" + path)
+        rm := exec.Command("rm", "-rf", "_repos/" + path)
         err = rm.Run()
         if err != nil {
             log.Fatal("rm error: ", err)
@@ -189,32 +188,32 @@ func upload(path string, info os.FileInfo, err error) error {
 
         file, _ := os.Open(path)
         defer file.Close()
-        count := 0
-        for {
-            lr := io.LimitReader(file, limit)
+        l, _ := file.Seek(0, 2)
+        length := int(l)
+        file.Seek(0, 0)
 
+        curr := 0
+        for curr <= length {
             reader, writer := io.Pipe()
-            gw := gzip.NewWriter(writer)
-            io.Copy(gw, lr)
+            go func() {
+                gw := gzip.NewWriter(writer)
+                io.CopyN(gw, file, int64(limit))
 
-            min, max := strconv.Itoa(count * int(limit)), strconv.Itoa((count + 1) * int(limit))
-            name := strings.Join([]string {relative, "-B", min, "-B", max}, " ")
+                gw.Close()
+                writer.Close()
+            }()
 
-            _, err = uploader.Upload(&s3manager.UploadInput {
+            name := strings.Join([]string {relative, "-B", strconv.Itoa(curr), "-B", strconv.Itoa(curr + limit)}, " ")
+
+            uploader.Upload(&s3manager.UploadInput {
                 Body: reader,
                 Key: &name,
                 Bucket: &common.Config.S3BucketName,
-                ContentEncoding: &encoding,
             })
 
-            store := make([]byte, 1)
-            _, err := file.Read(store)
-            if err == io.EOF {
-                break
-            }
-            file.Seek(-1, 1)
-            count++
+            curr += limit
         }
+
     }
     return nil
 }
