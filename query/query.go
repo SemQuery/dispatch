@@ -16,17 +16,12 @@ func Start() {
     m := martini.Classic()
     m.Post("/", func(w http.ResponseWriter, r *http.Request) string {
         r.ParseForm()
-        query, source, token := r.FormValue("query"), r.FormValue("source"), r.FormValue("token")
-
-        sToken, err := common.Redis.Get(query + "|" + source).Result()
-        if token == "" || err != nil || sToken != token {
-            return "You are not authorized to be here."
-        }
+        query, source := r.FormValue("query"), r.FormValue("source")
 
         executable := common.Config.EngineExecutable
         args       := append([]string{"-jar"}, common.Config.EngineArgs...)
         args       = append(args, []string{
-            executable, "-m", "query", "-i", url.QueryEscape(source) + ".db",
+            executable, "-m", "query", "-i", url.QueryEscape(source) + ".db", "-q", query,
         }...)
 
         quer := exec.Command("java", args...)
