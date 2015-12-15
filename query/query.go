@@ -36,18 +36,18 @@ func Start() {
 
         p := common.Packet {
             Action: "results",
-            Payload: map[string]interface{} {},
+            Payload: common.M{},
         }
 
-        var results []map[string]interface{}
+        var results []common.M
         for scanner.Scan() {
             parts := strings.Split(scanner.Text(), ",")
             if len(parts) == 1 {
                 p.Payload["files"] = parts[0]
                 count, _          := strconv.Atoi(parts[0])
-                results            = make([]map[string]interface{}, count)
+                results            = make([]common.M, count)
             } else {
-                results = append(results, map[string]interface{} {
+                results = append(results, common.M{
                     "src":   parts[0],
                     "start": parts[1],
                     "end":   parts[2],

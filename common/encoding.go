@@ -14,9 +14,12 @@ const (
     FinishedStatus = "finished"
 )
 
+// generic string -> any map
+type M map[string]interface{}
+
 type Packet struct {
     Action string `json:"action"`
-    Payload map[string]interface{} `json:"payload"`
+    Payload M `json:"payload"`
 }
 
 func (p Packet) Json() string {

@@ -94,7 +94,7 @@ func Start() {
 
         send(job.ID, common.Packet {
             Action: common.CloningAction,
-            Payload: map[string]interface{} {
+            Payload: common.M{
                 "status": common.StartedStatus,
             },
         })
@@ -106,7 +106,7 @@ func Start() {
 
         send(job.ID, common.Packet {
             Action: common.CloningAction,
-            Payload: map[string]interface{} {
+            Payload: common.M{
                 "status": common.FinishedStatus,
             },
         })
@@ -129,7 +129,7 @@ func Start() {
             output := strings.Split(scanner.Text(), ",")
             send(job.ID, common.Packet {
                 Action: common.IndexingAction,
-                Payload: map[string]interface{} {
+                Payload: common.M{
                     "percent": output[0],
                     "files": output[1],
                     "lines": output[2],
@@ -143,7 +143,7 @@ func Start() {
 
         send(job.ID, common.Packet {
             Action: common.SyncingAction,
-            Payload: map[string]interface{} {
+            Payload: common.M{
                 "status": common.StartedStatus,
             },
         })
@@ -158,7 +158,7 @@ func Start() {
 
         send(job.ID, common.Packet {
             Action: common.SyncingAction,
-            Payload: map[string]interface{} {
+            Payload: common.M{
                 "status": common.FinishedStatus,
             },
         })
@@ -171,7 +171,7 @@ func Start() {
 
         send(job.ID, common.Packet {
             Action: common.FinishedAction,
-            Payload: map[string]interface{} {},
+            Payload: common.M{},
         })
     }
 }
