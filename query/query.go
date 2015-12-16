@@ -10,6 +10,7 @@ import (
     "net/url"
     "os/exec"
     "net/http"
+    "encoding/json"
 )
 
 func Start() {
@@ -32,28 +33,26 @@ func Start() {
         }
         scanner := bufio.NewScanner(read)
 
-        p := common.Packet {
-            Action: "results",
-            Payload: common.M{},
-        }
-
         var results []common.M
         for scanner.Scan() {
             parts := strings.Split(scanner.Text(), ",")
             if len(parts) == 1 {
-                p.Payload["files"] = parts[0]
                 count, _          := strconv.Atoi(parts[0])
                 results            = make([]common.M, count)
             } else {
                 results = append(results, common.M{
-                    "src":   parts[0],
+                    "file":  parts[0],
                     "start": parts[1],
                     "end":   parts[2],
                 })
             }
         }
-        p.Payload["results"] = results
-        return p.Json(), 200
+
+        ret, err := json.Marshal(results)
+        if err != nil {
+            return err.Error(), 500
+        }
+        return string(ret), 200
     })
     m.RunOnAddr("localhost:3001")
 }
