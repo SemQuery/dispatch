@@ -14,7 +14,7 @@ import (
 
 func Start() {
     m := martini.Classic()
-    m.Post("/", func(w http.ResponseWriter, r *http.Request) string {
+    m.Post("/", func(w http.ResponseWriter, r *http.Request) (string, int) {
         r.ParseForm()
         query, source := r.FormValue("query"), r.FormValue("source")
 
@@ -24,9 +24,12 @@ func Start() {
             executable, "-m", "query", "-i", url.QueryEscape(source) + ".db", "-q", query,
         }...)
 
-        quer := exec.Command("java", args...)
+        queryCmd := exec.Command("java", args...)
 
-        read, _ := quer.StdoutPipe()
+        read, err := queryCmd.StdoutPipe()
+        if err != nil {
+            return err.Error(), 500
+        }
         scanner := bufio.NewScanner(read)
 
         p := common.Packet {
@@ -50,7 +53,7 @@ func Start() {
             }
         }
         p.Payload["results"] = results
-        return p.Json()
+        return p.Json(), 200
     })
     m.RunOnAddr("localhost:3001")
 }
