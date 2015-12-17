@@ -10,8 +10,8 @@ import (
     "io"
     "os"
     "log"
+    "fmt"
     "bufio"
-    "strconv"
     "strings"
     "net/url"
     "os/exec"
@@ -203,11 +203,13 @@ func upload(path string, info os.FileInfo, err error) error {
                 writer.Close()
             }()
 
-            name := strings.Join([]string {relative, "-B", strconv.Itoa(curr), "-B", strconv.Itoa(curr + limit)}, " ")
+            // e.g. <filename>$100$200
+            format := "%s$%d$%d"
+            key    := fmt.Sprintf(format, relative, curr, curr + limit)
 
             uploader.Upload(&s3manager.UploadInput {
                 Body: reader,
-                Key: &name,
+                Key: &key,
                 Bucket: &common.Config.S3BucketName,
             })
 
