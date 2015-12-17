@@ -11,7 +11,6 @@ import (
     "os"
     "log"
     "bufio"
-    "strconv"
     "strings"
     "net/url"
     "os/exec"
@@ -184,36 +183,23 @@ func upload(path string, info os.FileInfo, err error) error {
             return nil
         }
 
-        limit := common.Config.StorageMaxBytesPerFile
-
         file, _ := os.Open(path)
-        defer file.Close()
-        l, _ := file.Seek(0, 2)
-        length := int(l)
-        file.Seek(0, 0)
 
-        curr := 0
-        for curr <= length {
-            reader, writer := io.Pipe()
-            go func() {
-                gw := gzip.NewWriter(writer)
-                io.CopyN(gw, file, int64(limit))
+        reader, writer := io.Pipe()
+        go func() {
+            gw := gzip.NewWriter(writer)
+            io.Copy(gw, file)
 
-                gw.Close()
-                writer.Close()
-            }()
+            file.Close()
+            gw.Close()
+            writer.Close()
+        }()
 
-            name := strings.Join([]string {relative, "-B", strconv.Itoa(curr), "-B", strconv.Itoa(curr + limit)}, " ")
-
-            uploader.Upload(&s3manager.UploadInput {
-                Body: reader,
-                Key: &name,
-                Bucket: &common.Config.S3BucketName,
-            })
-
-            curr += limit
-        }
-
+        uploader.Upload(&s3manager.UploadInput {
+            Body: reader,
+            Key: &relative,
+            Bucket: &common.Config.S3BucketName,
+        })
     }
     return nil
 }
