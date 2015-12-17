@@ -10,6 +10,7 @@ import (
     "io"
     "os"
     "log"
+    "fmt"
     "bufio"
     "strings"
     "net/url"
@@ -184,8 +185,8 @@ func upload(path string, info os.FileInfo, err error) error {
         }
 
         file, _ := os.Open(path)
-
         reader, writer := io.Pipe()
+
         go func() {
             gw := gzip.NewWriter(writer)
             io.Copy(gw, file)
